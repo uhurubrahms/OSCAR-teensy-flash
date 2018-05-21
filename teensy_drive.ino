@@ -23,8 +23,13 @@ ros::Publisher chatter("chatter", &str_msg);
 std_msgs::Int32 rpm_msg; // create a publisher called "rpm" that sends rpm_msg messages.
 ros::Publisher rpm_pub("rpm", &rpm_msg);
 
+std_msgs::Int32 wheel_rev_cnt_msg; // Sends out cumulative wheel revolution count messages.
+ros::Publisher wheel_rev_cnt_pub("wheel_cnt", &wheel_rev_cnt_msg);
+
 std_msgs::Int32 vel_msg;
 ros::Publisher vel_pub("linear_vel", &vel_msg);
+
+
 
 int kill_pin = 2;     // This is the GPIO pin for emergency stopping.
 unsigned long duration = 0;
@@ -38,6 +43,7 @@ int rpmRefSig = 1; // When connected to analog pin, the signal is 0 when the gea
 volatile int rpmStateCur = 0; //the digital value of the incoming analog signals
 volatile int rpmStatePrev = 0;
 volatile int rpmCnt = 0; // Increment each time when sensor hits the magnet.
+volatile int cumulativeWheelRevolution = 0; // not flushed unless the program is restarted
 int rpmVal = 0;
 unsigned long lastmillis = 0;
 unsigned long oneSecInterval = 1000;
@@ -65,6 +71,9 @@ void messageDrive( const race::drive_values& pwm )
 
     vel_msg.data = linearVelocity;
     vel_pub.publish( &vel_msg );
+
+    wheel_rev_cnt_msg.data = cumulativeWheelRevolution;
+    wheel_rev_cnt_pub.publish( &wheel_rev_cnt_msg );
     
 
     if(pwm.pwm_drive < pwm_lowerlimit)  // Pin 5 is connected to the ESC..dive motor
@@ -87,7 +96,7 @@ void messageDrive( const race::drive_values& pwm )
     if (pwm.pwm_drive > pwm_lowerlimit && pwm.pwm_drive < pwm_center_value){
       velDirection = -1;
     }
-    else if (pwm.pwm_drive > pwm_center_value && pwm.pwm_drive < pwm_upperlimit){
+    else if (pwm.pwm_drive >= pwm_center_value && pwm.pwm_drive < pwm_upperlimit){
       velDirection = 1;    
     }
 
@@ -147,6 +156,7 @@ int analogToInterrupt(int rpmSensorPin){
 void ISR() {
    Serial.println("counting up");
    rpmCnt++;
+   cumulativeWheelRevolution += velDirection; // Subtract one if going backward.
 }
 
 
@@ -200,6 +210,7 @@ void setup() {
   nh.advertise(chatter);  // start the publisher..can be used for debugging.
   nh.advertise(rpm_pub);
   nh.advertise(vel_pub);
+  nh.advertise(wheel_rev_cnt_pub);
   
 }
 
@@ -237,6 +248,11 @@ void calculateVelocity(){
     
     Serial.print("RPM: ");
     Serial.println(rpmVal);
+
+    Serial.print("linear velocity: ");
+    Serial.print(linearVelocity);
+    Serial.println("m/s");
+    
   }
 }
 
